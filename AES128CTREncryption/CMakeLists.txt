@@ -21,6 +21,9 @@ endif()
 
 message(STATUS "Configuring for ${CMAKE_BUILD_TYPE} build!")
 
+# Compile flags providing AVX support
+target_compile_options(${PROJECT_NAME} PRIVATE -mavx2 -maes)
+
 # Make the root directory available for the current project (for aes.hpp and aes.c)
 target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/..)
 
