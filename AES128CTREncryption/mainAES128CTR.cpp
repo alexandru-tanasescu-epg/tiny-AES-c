@@ -1,0 +1,108 @@
+// Reads plaintext from toBeEncrypted.txt, encrypts it with AES-128 in CTR
+// mode and writes the resulting ciphertext (raw bytes) to afterEncryption.txt.
+
+#include <iostream>
+#include <fstream>
+#include <cstdio>
+#include <cstdlib>
+#include <cstdint>
+#include <vector>
+#include <string.h> // used withing aes.c (for memset)
+
+// AES C++ style header (wrapper over aes.h)
+#include "aes.hpp"
+
+// Include aes.c instead of creating a separate library for it, as its CTR-specific methods
+// will end up being modified later for performance purposes.
+extern "C" {
+#include "aes.c"
+}
+
+// Exit statuses
+enum EXIT_STATUS : int {
+    SUCCESS                       = 0,
+    UNABLE_TO_OPEN_INPUT_FILE     = 1,
+    UNABLE_TO_GET_INPUT_SIZE      = 2,
+    UNABLE_TO_READ_INPUT_CONTENTS = 3,
+    UNABLE_TO_OPEN_OUTPUT_FILE    = 4,
+    UNABLE_TO_WRITE_TO_OUTPUT     = 5
+};
+
+// Input (unencrypted data) and output (encrypted data) file names
+static constexpr char kInputFile[]  = "toBeEncrypted.txt";
+static constexpr char kOutputFile[] = "afterEncryption.txt";
+
+// 16-byte (128-bit) key and IV for AES-128 (CTR uses the IV as the initial counter).
+static constexpr uint8_t key[AES_KEYLEN]   = { 0x2b, 0x7e, 0x15, 0x16, 0x28, 0xae, 0xd2, 0xa6,
+                                               0xab, 0xf7, 0x15, 0x88, 0x09, 0xcf, 0x4f, 0x3c };
+static constexpr uint8_t iv[AES_BLOCKLEN]  = { 0xf0, 0xf1, 0xf2, 0xf3, 0xf4, 0xf5, 0xf6, 0xf7,
+                                               0xf8, 0xf9, 0xfa, 0xfb, 0xfc, 0xfd, 0xfe, 0xff };
+
+int main()
+{
+    // Read the whole input file into a byte buffer.
+    std::ifstream inFile;
+    inFile.open(kInputFile, std::ios::binary);
+    if (!inFile.is_open())
+    {
+        std::cerr << "Could not open input file: " << kInputFile << std::endl;
+        return EXIT_STATUS::UNABLE_TO_OPEN_INPUT_FILE;
+    }
+
+    // Get size of the input file (thanks CPPReference this API is atrocious)
+    inFile.seekg(0, inFile.end);
+    std::streamsize size = inFile.tellg();
+    inFile.seekg(0, inFile.beg);
+
+    if (size < 0)
+    {
+        std::cerr << "Could not determine size of: " << kInputFile << std::endl;
+        inFile.close();
+        return EXIT_STATUS::UNABLE_TO_GET_INPUT_SIZE;
+    }
+
+    // Buffer used for storing input file contents
+    std::vector<uint8_t> buffer(static_cast<size_t>(size));
+    if (size > 0) {
+        if (inFile.read(reinterpret_cast<char *>(buffer.data()), buffer.size());
+            (inFile.rdstate() & std::ifstream::failbit) != 0 || (inFile.rdstate() & std::ifstream::eofbit) !=0) 
+        {
+            std::cerr << "Could not read input file: " << kInputFile << std::endl;
+            inFile.close();
+            return EXIT_STATUS::UNABLE_TO_READ_INPUT_CONTENTS;
+        }
+    }
+    
+    // If this point is reached than that means that the input file contents have been successfully read
+    inFile.close();
+
+    // Encrypt in place using AES-128 CTR. No padding is needed in CTR mode (unlike CBC or ECB mode)
+    struct AES_ctx ctx;
+    AES_init_ctx_iv(&ctx, key, iv);
+    AES_CTR_xcrypt_buffer(&ctx, buffer.data(), buffer.size());
+
+    // Write the ciphertext (raw bytes) to the output file.
+    std::ofstream outFile; 
+    outFile.open(kOutputFile, std::ios::binary);
+    if (!outFile.is_open())
+    {
+        std::cerr << "Could not open output file: " << kOutputFile << std::endl;
+        return EXIT_STATUS::UNABLE_TO_OPEN_OUTPUT_FILE;
+    }
+    if (!buffer.empty()) {
+        if (outFile.write(reinterpret_cast<char *>(buffer.data()), buffer.size());
+            (outFile.rdstate() & std::ofstream::badbit) !=0)
+        {
+            std::cerr << "Could not write output file: " << kOutputFile << std::endl;
+            outFile.close();
+            return EXIT_STATUS::UNABLE_TO_WRITE_TO_OUTPUT;
+        }
+    }
+    // If this point is reached than that means that encrypted data has been successfully written to the output file
+    outFile.close();
+
+    std::cout << "Encrypted " << size << " byte(s): " 
+              << kInputFile << " -> " << kOutputFile 
+              << std::endl;
+    return EXIT_STATUS::SUCCESS;
+}

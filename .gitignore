@@ -2,3 +2,13 @@
 /test.elf
 /test.map
 test_package/build
+
+# Build directories
+build/
+
+# Input and output files
+toBeEncrypted.txt
+afterEncryption.txt
+
+# Executables of any kind 
+*.exe
